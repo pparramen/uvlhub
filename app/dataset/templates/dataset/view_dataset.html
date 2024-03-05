@@ -172,6 +172,11 @@
                 {% endfor %}
             </tbody>
         </table>
+
+        <a href="/dataset/download/{{ dataset.id }}" class="btn btn-primary" style="border-radius: 5px;">
+            <i data-feather="download" class="center-button-icon"></i>
+            Download all ({{ dataset.get_file_total_size_for_human() }})
+        </a>
     </div>
 </div>
 
@@ -184,7 +189,8 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" style="overflow-y: auto;">
-                <pre id="fileContent" style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; background-color: #f5f5f5; padding: 20px; border-radius: 5px; border: 1px solid #ccc;"></pre>
+                <pre id="fileContent"
+                    style="max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; background-color: #f5f5f5; padding: 20px; border-radius: 5px; border: 1px solid #ccc;"></pre>
             </div>
         </div>
     </div>
@@ -192,7 +198,7 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        feather.replace(); 
+        feather.replace();
     });
 
     function viewFile(fileId) {
