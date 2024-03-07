@@ -72,6 +72,13 @@ chico sundermann">
                     </a>
                 </li>
 
+                <li class="sidebar-item {{ 'active' if request.endpoint == 'build_my_dataset' else '' }}">
+                    <a class="sidebar-link" href="{{ url_for('dataset.build_my_dataset') }}">
+                        <i class="align-middle" data-feather="tool"></i> <span class="align-middle">Build my dataset</span>
+                    </a>
+                </li>
+                
+
                 {% if current_user.is_anonymous %}
 
                     <li class="sidebar-header">
