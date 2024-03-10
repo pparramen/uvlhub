@@ -136,6 +136,71 @@
             </div>
         </div>
 
+        <!-- Rating System for Dataset -->
+        <div class="rating-system mt-4">
+            <h4 class="mb-3">Rate This Dataset</h4>
+            {% if has_voted_dataset %}
+            <p class="alert alert-info">You have already voted for this dataset.</p>
+            {% else %}
+            <form action="{{ url_for('dataset.rate_item') }}" method="post" class="form-inline">
+                <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
+                <div class="form-group mb-2">
+                    <label for="rating-dataset" class="sr-only">Rating</label>
+                    <select name="rating" id="rating-dataset" class="form-control">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary mb-2 ml-2">Submit Rating</button>
+            </form>
+            {% endif %}
+            <p>Current Average Rating: <strong>{{ dataset.average_rating if dataset.average_rating is not none else
+                    'N/A' }}</strong></p>
+        </div>
+
+        <!-- Rating System for Feature Models -->
+        <div class="feature-model-rating-system mt-4">
+            <h4 class="mb-3">Rate Feature Models</h4>
+            <select name="feature_model_id" id="feature_model_select" class="form-control mb-3"
+                onchange="showFeatureModelRatingOptions(this)">
+                <option value="">Please select a Feature Model</option>
+                {% for feature_model in dataset.feature_models %}
+                {% for file in feature_model.files %}
+                <option value="{{ feature_model.id }}"
+                    data-average-rating="{{ feature_model.average_rating|default(0,true)|round(2,'floor') }}"
+                    data-has-voted="{{ 'true' if has_voted_feature_models.get(feature_model.id, False) else 'false' }}">
+                    {{ file.name }}
+                </option>
+                {% endfor %}
+                {% endfor %}
+            </select>
+
+            <div id="feature_model_rating_options" style="display: none;">
+                <p>Current Average Rating for selected model: <strong><span
+                            id="current_feature_model_rating">N/A</span></strong></p>
+                <form action="{{ url_for('dataset.rate_item') }}" method="post" id="featureModelRatingForm"
+                    style="display: none;">
+                    <input type="hidden" name="feature_model_id" id="selected_feature_model_id">
+                    <div class="form-group">
+                        <label for="rating-feature">Rating:</label>
+                        <select name="rating" id="rating-feature" class="form-control">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary mb-2">Submit Rating</button>
+                </form>
+                <p id="alreadyVotedMessage" style="display: none;" class="alert alert-info">You have already voted for
+                    this feature model.</p>
+            </div>
+        </div>
+
     </div>
 
     <div class="col-xl-4 col-lg-12 col-md-12 col-sm-12">
@@ -198,9 +263,35 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        feather.replace();
+        var featureModelSelect = document.getElementById('feature_model_select');
+        featureModelSelect.value = ""; 
     });
 
+    function showFeatureModelRatingOptions(selectElement) {
+        var featureModelId = selectElement.value;
+        var selectedOption = selectElement.options[selectElement.selectedIndex];
+        var hasVoted = selectedOption.getAttribute('data-has-voted') === 'true';
+        var featureModelRating = selectedOption.getAttribute('data-average-rating');
+
+        document.getElementById('selected_feature_model_id').value = featureModelId;
+        document.getElementById('current_feature_model_rating').textContent = featureModelRating;
+
+        var ratingForm = document.getElementById('featureModelRatingForm');
+        var alreadyVotedMessage = document.getElementById('alreadyVotedMessage');
+
+        if (featureModelId) {
+            document.getElementById('feature_model_rating_options').style.display = 'block';
+            if (hasVoted) {
+                ratingForm.style.display = 'none';
+                alreadyVotedMessage.style.display = 'block';
+            } else {
+                ratingForm.style.display = 'block';
+                alreadyVotedMessage.style.display = 'none';
+            }
+        } else {
+            document.getElementById('feature_model_rating_options').style.display = 'none';
+        }
+    }
     function viewFile(fileId) {
         fetch(`/file/view/${fileId}`)
             .then(response => response.json())

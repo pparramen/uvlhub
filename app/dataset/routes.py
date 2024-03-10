@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from typing import List
 from zipfile import ZipFile
+from app import db
 
 from flask import flash, redirect, render_template, url_for, request, jsonify, send_file, send_from_directory, abort, \
     current_app, make_response
@@ -18,7 +19,7 @@ from werkzeug.utils import secure_filename
 
 import app
 from .forms import DataSetForm
-from .models import DataSet, DSMetrics, FeatureModel, File, FMMetaData, FMMetrics, DSMetaData, Author, PublicationType, \
+from .models import DataSet, DSMetrics, FeatureModel, Rating, File, FMMetaData, FMMetrics, DSMetaData, Author, PublicationType, \
     DSDownloadRecord, DSViewRecord, FileDownloadRecord
 from . import dataset_bp
 from ..auth.models import User
@@ -385,6 +386,21 @@ def download_dataset(dataset_id):
 def view_dataset(dataset_id):
     dataset = DataSet.query.get_or_404(dataset_id)
 
+    feature_model_titles = [f.fm_meta_data.title for f in dataset.feature_models]
+
+    # Initialize has_voted_dataset y has_voted_feature_models
+    has_voted_dataset = False
+    has_voted_feature_models = {}
+
+    if current_user.is_authenticated:
+       # Check if the user has already voted for the dataset
+        has_voted_dataset = Rating.query.filter_by(user_id=current_user.id, dataset_id=dataset_id).first() is not None
+
+        # Check if the user has already voted for each feature model
+        for feature_model in dataset.feature_models:
+            has_voted = Rating.query.filter_by(user_id=current_user.id, feature_model_id=feature_model.id).first() is not None
+            has_voted_feature_models[feature_model.id] = has_voted
+
     # Get the cookie from the request or generate a new one if it does not exist
     user_cookie = request.cookies.get('view_cookie')
     if not user_cookie:
@@ -392,7 +408,7 @@ def view_dataset(dataset_id):
 
     # Record the view in your database
     view_record = DSViewRecord(
-        user_id=current_user.id if current_user.is_authenticated else None,
+        user_id=current_user.get_id() if current_user.is_authenticated else None,
         dataset_id=dataset_id,
         view_date=datetime.utcnow(),
         view_cookie=user_cookie)
@@ -400,7 +416,8 @@ def view_dataset(dataset_id):
     app.db.session.commit()
 
     # Save the cookie to the user's browser
-    resp = make_response(render_template('dataset/view_dataset.html', dataset=dataset))
+    resp = make_response(render_template('dataset/view_dataset.html', dataset=dataset, feature_model_titles=feature_model_titles,
+                                         has_voted_dataset=has_voted_dataset, has_voted_feature_models=has_voted_feature_models))
     resp.set_cookie('view_cookie', user_cookie)
 
     return resp
@@ -435,6 +452,60 @@ def download_file(file_id):
 
     return resp
 
+
+
+@dataset_bp.route('/rate_item', methods=['POST'])
+@login_required
+def rate_item():
+    rating_value = request.form.get('rating')
+    feature_model_id = request.form.get('feature_model_id')
+    dataset_id = request.form.get('dataset_id')
+
+   # Convert rating value to integer
+    rating_value = int(rating_value)
+
+    if feature_model_id:
+        # Check if the user has already voted for this Feature Model
+        existing_rating = Rating.query.filter_by(user_id=current_user.id, feature_model_id=feature_model_id).first()
+        if existing_rating:
+            flash('You have already rated this feature model.', 'info')
+        else:
+            # Create new vote for Feature Model
+            new_rating = Rating(rating=rating_value, feature_model_id=feature_model_id, user_id=current_user.id)
+            db.session.add(new_rating)
+            db.session.commit()
+            Rating.update_average_rating(feature_model_id=feature_model_id)
+            flash('Your rating for the feature model has been submitted successfully!', 'success')
+           # Get the dataset_id associated with the feature_model
+            feature_model = FeatureModel.query.get(feature_model_id)
+            dataset_id = feature_model.data_set_id
+
+    elif dataset_id:
+      # Check if the user has already voted for this dataset
+        existing_rating = Rating.query.filter_by(user_id=current_user.id, dataset_id=dataset_id).first()
+        if existing_rating:
+            flash('You have already rated this dataset.', 'info')
+        else:
+          # Create new vote for Dataset
+            new_rating = Rating(rating=rating_value, dataset_id=dataset_id, user_id=current_user.id)
+            db.session.add(new_rating)
+            db.session.commit()
+            Rating.update_average_rating(dataset_id=dataset_id)
+            flash('Your rating for the dataset has been submitted successfully!', 'success')
+
+    else:
+        flash('Invalid rating submission.', 'error')
+
+   
+    if not dataset_id and feature_model_id:
+        feature_model = FeatureModel.query.get(feature_model_id)
+        if feature_model and feature_model.data_set_id:
+            dataset_id = feature_model.data_set_id
+        else:
+            flash('Failed to find associated dataset for redirection.', 'error')
+
+    return redirect(url_for('dataset.view_dataset', dataset_id=dataset_id))
+  
 
 @dataset_bp.route('/file/view/<int:file_id>', methods=['GET'])
 def view_file(file_id):
