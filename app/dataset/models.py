@@ -78,6 +78,7 @@ class DataSet(db.Model):
 
     ds_meta_data = db.relationship('DSMetaData', backref='data_set', lazy=True, cascade="all, delete")
     feature_models = db.relationship('FeatureModel', backref='data_set', lazy=True, cascade="all, delete")
+    average_rating = db.Column(db.Float,  default=0.0)
 
     def delete(self):
         db.session.delete(self)
@@ -129,6 +130,7 @@ class FeatureModel(db.Model):
     fm_meta_data_id = db.Column(db.Integer, db.ForeignKey('fm_meta_data.id'))
     files = db.relationship('File', backref='feature_model', lazy=True, cascade="all, delete")
     fm_meta_data = db.relationship('FMMetaData', uselist=False, backref='feature_model', cascade="all, delete")
+    average_rating = db.Column(db.Float,  default=0.0)
 
     def __repr__(self):
         return f'FeatureModel<{self.id}>'
@@ -228,3 +230,25 @@ def get_human_readable_size(size):
         return f'{round(size / (1024 ** 2), 2)} MB'
     else:
         return f'{round(size / (1024 ** 3), 2)} GB'
+
+class Rating(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    rating = db.Column(db.Integer, nullable=False)
+    dataset_id = db.Column(db.Integer, db.ForeignKey('data_set.id'), nullable=True)
+    feature_model_id = db.Column(db.Integer, db.ForeignKey('feature_model.id'), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  
+
+    @staticmethod
+    def update_average_rating(dataset_id=None, feature_model_id=None):
+        if dataset_id:
+            ratings = Rating.query.filter_by(dataset_id=dataset_id).all()
+            average_rating = sum([rating.rating for rating in ratings]) / len(ratings) if ratings else 0
+            dataset = DataSet.query.get(dataset_id)
+            dataset.average_rating = average_rating
+            db.session.commit()
+        elif feature_model_id:
+            ratings = Rating.query.filter_by(feature_model_id=feature_model_id).all()
+            average_rating = sum([rating.rating for rating in ratings]) / len(ratings) if ratings else 0
+            feature_model = FeatureModel.query.get(feature_model_id)
+            feature_model.average_rating = average_rating
+            db.session.commit()
