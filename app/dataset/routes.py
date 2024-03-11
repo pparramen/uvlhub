@@ -466,8 +466,6 @@ def view_file(file_id):
 
 @dataset_bp.route('/build_my_dataset')
 def build_my_dataset():
-    # Asumimos que los archivos ya se han añadido al carrito en el formato esperado
-    # como una lista de diccionarios con 'file_id' y 'file_name'
     files_in_cart = session.get('cart', [])
     
     return render_template('dataset/build_myDataset.html', files_in_cart=files_in_cart)
@@ -478,14 +476,12 @@ def add_to_cart():
     data = request.json
     file_id = data.get('file_id')
     file_name = data.get('file_name')
-    
-    # Aquí, asegúrate de inicializar session['cart'] como una lista vacía si aún no existe
     if 'cart' not in session:
         session['cart'] = []
     
-    # Añade el diccionario que contiene el ID y el nombre del archivo a session['cart']
+    # Add the dictionary containing the ID and file name to session['cart']
     session['cart'].append({'file_id': file_id, 'file_name': file_name})
-    session.modified = True  # Marca la sesión como modificada para asegurar que se guarde
+    session.modified = True 
     
     return jsonify({'message': 'Archivo añadido al carrito'})
 
@@ -493,44 +489,39 @@ def add_to_cart():
 def remove_from_cart():
     data = request.json
     file_id = data.get('file_id')
-    # Lógica para remover el archivo del carrito basada en el file_id
-    # Esto podría involucrar remover un item de la sesión `session['cart']`
-    # Filtrar la lista de archivos en el carrito para excluir el que se desea eliminar
     session['cart'] = [item for item in session.get('cart', []) if item['file_id'] != file_id]
-    session.modified = True  # Marcar la sesión como modificada para asegurar que se guarde
+    session.modified = True  
     return jsonify({'message': 'File removed from cart'})
 
 @dataset_bp.route('/dataset/download_all')
 def download_all():
-    # Obtener los IDs de los archivos del carrito de la sesión
+    
     file_ids = [item['file_id'] for item in session.get('cart', [])]
 
-    # Crear un archivo ZIP en memoria
+    # Create Zip
     memory_file = BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for file_id in file_ids:
-            # Obtener el archivo por ID
+            #Get file ID
             file = File.query.get_or_404(file_id)
-            # Construir la ruta completa al archivo
+          # Build the full path to the file
             directory_path = f"uploads/user_{file.feature_model.data_set.user_id}/dataset_{file.feature_model.data_set_id}/"
             parent_directory_path = os.path.dirname(current_app.root_path)
             file_path = os.path.join(parent_directory_path, directory_path, file.name)
-            # Asegurarse de que el archivo existe
+          
             if os.path.exists(file_path):
-                # Añadir el archivo al ZIP
                 zf.write(file_path, os.path.basename(file_path))
             else:
-                # Manejar el caso en el que el archivo no exista
                 print(f"El archivo {file_path} no existe.")
-    # Posicionar el puntero al principio del stream
+   
     memory_file.seek(0)
 
-    # Enviar el archivo ZIP al cliente
+    # Send Zip to user
     return send_file(
         memory_file,
         mimetype='application/zip',
         as_attachment=True,
-        download_name='my_dataset.zip'  # Este es el nombre del archivo para la descarga
+        download_name='my_dataset.zip' 
     )
 '''
     API ENDPOINTS FOR DATASET MODEL
