@@ -19,7 +19,7 @@ from werkzeug.utils import secure_filename
 
 import app
 from .forms import DataSetForm
-from .models import DataSet, DSMetrics, FeatureModel, Rating, File, FMMetaData, FMMetrics, DSMetaData, Author, PublicationType, \
+from .models import DataSet, DSMetrics, FileViewRecord, FeatureModel, Rating, File, FMMetaData, FMMetrics, DSMetaData, Author, PublicationType, \
     DSDownloadRecord, DSViewRecord, FileDownloadRecord
 from . import dataset_bp
 from ..auth.models import User
@@ -388,6 +388,19 @@ def view_dataset(dataset_id):
 
     feature_model_titles = [f.fm_meta_data.title for f in dataset.feature_models]
 
+    #Statistics
+    feature_models_counter = len(dataset.feature_models)
+    dataset_downloads = DSDownloadRecord.query.filter_by(dataset_id=dataset_id).count()
+    feature_models_downloads = sum(FileDownloadRecord.query.filter_by(file_id=file.id).count() for fm in dataset.feature_models for file in fm.files)
+    dataset_ratings_count = Rating.query.filter_by(dataset_id=dataset_id).count()
+    feature_models_ratings_count = sum(Rating.query.filter_by(feature_model_id=fm.id).count() for fm in dataset.feature_models)
+    dataset_views = DSViewRecord.query.filter_by(dataset_id=dataset_id).count()
+    feature_models_views = 0
+    for fm in dataset.feature_models:
+        for file in fm.files:
+            views_count = FileViewRecord.query.filter_by(file_id=file.id).count()
+            feature_models_views += views_count
+
     # Initialize has_voted_dataset y has_voted_feature_models
     has_voted_dataset = False
     has_voted_feature_models = {}
@@ -417,7 +430,10 @@ def view_dataset(dataset_id):
 
     # Save the cookie to the user's browser
     resp = make_response(render_template('dataset/view_dataset.html', dataset=dataset, feature_model_titles=feature_model_titles,
-                                         has_voted_dataset=has_voted_dataset, has_voted_feature_models=has_voted_feature_models))
+                                         feature_models_counter=feature_models_counter,has_voted_dataset=has_voted_dataset, has_voted_feature_models=has_voted_feature_models,
+                                          dataset_downloads=dataset_downloads,feature_models_downloads=feature_models_downloads,
+                                           dataset_ratings_count=dataset_ratings_count,feature_models_ratings_count=feature_models_ratings_count,
+                                            dataset_views=dataset_views,feature_models_views=feature_models_views))
     resp.set_cookie('view_cookie', user_cookie)
 
     return resp
@@ -509,11 +525,9 @@ def rate_item():
 
 @dataset_bp.route('/file/view/<int:file_id>', methods=['GET'])
 def view_file(file_id):
-    
     file = File.query.get_or_404(file_id)
     filename = file.name
 
-  
     directory_path = f"uploads/user_{file.feature_model.data_set.user_id}/dataset_{file.feature_model.data_set_id}/"
     parent_directory_path = os.path.dirname(current_app.root_path)
     file_path = os.path.join(parent_directory_path, directory_path, filename)
@@ -522,7 +536,30 @@ def view_file(file_id):
         if os.path.exists(file_path):
             with open(file_path, 'r') as f:
                 content = f.read()
-            return jsonify({'success': True, 'content': content})
+
+            # Obtén o crea la cookie de visualización
+            user_cookie = request.cookies.get('view_cookie')
+            if not user_cookie:
+                user_cookie = str(uuid.uuid4())
+
+            # Registra la visualización del archivo
+            new_view_record = FileViewRecord(
+                user_id=current_user.id if current_user.is_authenticated else None,
+                file_id=file_id,
+                view_date=datetime.utcnow(),
+                view_cookie=user_cookie
+            )
+            db.session.add(new_view_record)
+            db.session.commit()
+
+            # Prepara la respuesta
+            response = jsonify({'success': True, 'content': content})
+            if not request.cookies.get('view_cookie'):
+                # Si no existe una cookie de visualización, envíala de vuelta al cliente
+                response = make_response(response)
+                response.set_cookie('view_cookie', user_cookie, max_age=60*60*24*365*2)  # Ejemplo: expira en 2 años
+
+            return response
         else:
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
