@@ -537,12 +537,11 @@ def view_file(file_id):
             with open(file_path, 'r') as f:
                 content = f.read()
 
-            # Obtén o crea la cookie de visualización
             user_cookie = request.cookies.get('view_cookie')
             if not user_cookie:
                 user_cookie = str(uuid.uuid4())
 
-            # Registra la visualización del archivo
+            #Register file view
             new_view_record = FileViewRecord(
                 user_id=current_user.id if current_user.is_authenticated else None,
                 file_id=file_id,
@@ -552,12 +551,11 @@ def view_file(file_id):
             db.session.add(new_view_record)
             db.session.commit()
 
-            # Prepara la respuesta
+            #Prepare response
             response = jsonify({'success': True, 'content': content})
             if not request.cookies.get('view_cookie'):
-                # Si no existe una cookie de visualización, envíala de vuelta al cliente
                 response = make_response(response)
-                response.set_cookie('view_cookie', user_cookie, max_age=60*60*24*365*2)  # Ejemplo: expira en 2 años
+                response.set_cookie('view_cookie', user_cookie, max_age=60*60*24*365*2)  
 
             return response
         else:
