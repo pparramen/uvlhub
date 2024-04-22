@@ -473,6 +473,13 @@ def download_file(file_id):
 @dataset_bp.route('/rate_item', methods=['POST'])
 @login_required
 def rate_item():
+
+    try:
+        rating_value = int(request.form.get('rating', 0))  
+    except ValueError:
+        flash('Please select a valid rating.', 'error')
+        return redirect(request.referrer)  
+
     rating_value = request.form.get('rating')
     feature_model_id = request.form.get('feature_model_id')
     dataset_id = request.form.get('dataset_id')

@@ -2,6 +2,76 @@
 
 {% block title %}View dataset{% endblock %}
 
+{% block head_extra %}
+<style>
+    th.uvl-title {
+        width: 20%;
+      
+    }
+
+    th.size {
+        width: 10%;
+       
+    }
+
+    th.options {
+        width: 15%;
+        
+    }
+
+    th.average-rate {
+        width: 15%;
+      
+    }
+
+    th.rate-feature-model {
+        width: 40%;
+       
+    }
+
+    table {
+        width: 100%;
+    }
+
+    .star {
+        cursor: pointer;
+        color: white;
+        font-size: 50px;
+        text-shadow:
+            -1px -1px 0 #808080,
+            1px -1px 0 #808080,
+            -1px 1px 0 #808080,
+            1px 1px 0 #808080;
+        transition: color 0.2s, text-shadow 0.2s;
+    }
+
+    .star-small {
+        cursor: pointer;
+        color: white;
+        font-size: 25px;
+        text-shadow:
+            -1px -1px 0 #808080,
+            1px -1px 0 #808080,
+            -1px 1px 0 #808080,
+            1px 1px 0 #808080;
+        transition: color 0.2s, text-shadow 0.2s;
+    }
+
+    .star:hover,
+    .star.selected,
+    .star.selected~.star {
+        color: black;
+        text-shadow: none;
+    }
+
+    .star-small:hover,
+    .star-small.selected,
+    .star-small.selected~.star {
+        color: black;
+        text-shadow: none;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 
@@ -28,12 +98,26 @@
         <div class="card">
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between">
-                    <h2>{{ dataset.ds_meta_data.title }}</h2>
+                    <div class="d-flex align-items-center">
+                        <h2 class="mb-0">{{ dataset.ds_meta_data.title }}</h2>
+                        <div class="ml-3 d-flex align-items-center" style="font-size: 1.5rem; font-weight: bold;">
+                            <span style="margin-right: 5px;">{{ dataset.average_rating|round(2, 'floor')
+                                if dataset.average_rating is not none else 'N/A' }}</span>
+                            {% set rating = dataset.average_rating if dataset.average_rating is not none else 0 %}
+                            {% set star_count = rating | int if rating > 0 else 1 %}
+                            {% for _ in range(star_count) %}
+                            <span style="color: black;">&#9733;</span> 
+                            {% endfor %}
+                        </div>
+                    </div>
+
                     <div>
                         <span class="badge bg-secondary">{{ dataset.get_cleaned_publication_type() }}</span>
                     </div>
                 </div>
-                <p class="text-secondary">{{ dataset.created_at.strftime('%B %d, %Y at %I:%M %p') }}</p>
+
+                <p class="text-secondary" style="margin-top: 20px;">{{ dataset.created_at.strftime('%B %d, %Y at %I:%M
+                    %p') }}</p>
 
                 <div class="row mb-4">
 
@@ -136,87 +220,41 @@
                     </div>
 
                 </div>
-
-            </div>
-        </div>
-
-        <!-- Rating System for Dataset -->
-        <div class="rating-system mt-4">
-            <h4 class="mb-3">Rate This Dataset</h4>
-            {% if has_voted_dataset %}
-            <p class="alert alert-info">You have already voted for this dataset.</p>
-            {% else %}
-            <form action="{{ url_for('dataset.rate_item') }}" method="post" class="form-inline">
-                <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
-                <div class="form-group mb-2">
-                    <label for="rating-dataset" class="sr-only">Rating</label>
-                    <select name="rating" id="rating-dataset" class="form-control">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                    </select>
+                <!-- Rating System for Dataset -->
+                <div class="rating-system mt-4">
+                    <h4 class="mb-3">Rate This Dataset</h4>
+                    {% if has_voted_dataset %}
+                    <p class="alert alert-info">You have already voted for this dataset.</p>
+                    {% else %}
+                    <form action="{{ url_for('dataset.rate_item') }}" method="post" class="form-inline">
+                        <input type="hidden" name="dataset_id" value="{{ dataset.id }}">
+                        <input type="hidden" id="rating-input" name="rating" value="">
+                        <div class="rating" style="margin-bottom: 10px;">
+                            {% for star in range(1, 6) %}
+                            <span class="star" data-value="{{ star }}">&#9733;</span>
+                            {% endfor %}
+                        </div>
+                        <button type="submit" class="btn btn-primary mb-2 ml-2" style="margin-top: 5px;">Submit
+                            Rating</button>
+                    </form>
+                    {% endif %}
                 </div>
-                <button type="submit" class="btn btn-primary mb-2 ml-2">Submit Rating</button>
-            </form>
-            {% endif %}
-            <p>Current Average Rating: <strong>{{ dataset.average_rating if dataset.average_rating is not none else
-                    'N/A' }}</strong></p>
-        </div>
 
-        <!-- Rating System for Feature Models -->
-        <div class="feature-model-rating-system mt-4">
-            <h4 class="mb-3">Rate Feature Models</h4>
-            <select name="feature_model_id" id="feature_model_select" class="form-control mb-3"
-                onchange="showFeatureModelRatingOptions(this)">
-                <option value="">Please select a Feature Model</option>
-                {% for feature_model in dataset.feature_models %}
-                {% for file in feature_model.files %}
-                <option value="{{ feature_model.id }}"
-                    data-average-rating="{{ feature_model.average_rating|default(0,true)|round(2,'floor') }}"
-                    data-has-voted="{{ 'true' if has_voted_feature_models.get(feature_model.id, False) else 'false' }}">
-                    {{ file.name }}
-                </option>
-                {% endfor %}
-                {% endfor %}
-            </select>
 
-            <div id="feature_model_rating_options" style="display: none;">
-                <p>Current Average Rating for selected model: <strong><span
-                            id="current_feature_model_rating">N/A</span></strong></p>
-                <form action="{{ url_for('dataset.rate_item') }}" method="post" id="featureModelRatingForm"
-                    style="display: none;">
-                    <input type="hidden" name="feature_model_id" id="selected_feature_model_id">
-                    <div class="form-group">
-                        <label for="rating-feature">Rating:</label>
-                        <select name="rating" id="rating-feature" class="form-control">
-                            <option value="1">1</option>
-                            <option value="2">2</option>
-                            <option value="3">3</option>
-                            <option value="4">4</option>
-                            <option value="5">5</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn btn-primary mb-2">Submit Rating</button>
-                </form>
-                <p id="alreadyVotedMessage" style="display: none;" class="alert alert-info">You have already voted for
-                    this feature model.</p>
             </div>
         </div>
 
-    </div>
-
-    <div class="col-xl-4 col-lg-12 col-md-12 col-sm-12">
 
         <h1 class="h3 mb-3">UVL models ({{ dataset.get_files_count() }})</h1>
 
         <table class="table">
             <thead>
                 <tr>
-                    <th>UVL title</th>
-                    <th>Size</th>
-                    <th>Options</th>
+                    <th class="uvl-title">UVL title</th>
+                    <th class="size">Size</th>
+                    <th class="options">Options</th>
+                    <th class="average-rate">Rating</th>
+                    <th class="rate-feature-model">Rate feature model</th>
                 </tr>
             </thead>
             <tbody>
@@ -236,6 +274,36 @@
                             <i data-feather="eye"></i>
                         </button>
                     </td>
+                    <td>
+                        <!-- Average rate of feature model-->
+                        <span>{{ feature_model.average_rating|round(2, 'floor') if feature_model.average_rating is not
+                            none else 'N/A' }}</span>
+                        <span style="color: black;">&#9733;</span>
+                    </td>
+                    <td>
+
+
+                        {% if has_voted_feature_models[feature_model.id] %}
+                        <!-- Show message if you have already voted -->
+                        <p class="alert alert-info">You have already voted for this feature model.</p>
+                        {% else %}
+                        <!-- Show rate form if you have not voted -->
+                        <div class="feature-model-rating-system">
+                            <form action="{{ url_for('dataset.rate_item') }}" method="post"
+                                class="d-flex align-items-center">
+                                <input type="hidden" name="feature_model_id" value="{{ feature_model.id }}">
+                                <div class="d-flex">
+                                    {% for num in range(1, 6) %}
+                                    <span class="star-small" data-value="{{ num }}"
+                                        onclick="setFeatureModelRating(this, '{{ feature_model.id }}', {{ num }})">&#9733;</span>
+                                    {% endfor %}
+                                </div>
+                                <input type="hidden" name="rating" id="rating-{{ feature_model.id }}" value="">
+                                <button type="submit" class="btn btn-primary btn-sm ml-2">Submit Rating</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
                 {% endfor %}
@@ -246,24 +314,56 @@
             <i data-feather="download" class="center-button-icon"></i>
             Download all ({{ dataset.get_file_total_size_for_human() }})
         </a>
-        <br></br>
-        <div><br></br></div>
-        <div class="col-12">
-            <h1 class="h2 mb-3">Statistics</h1>
-            <h1 class="h2 mb-3">
-                <span class="badge bg-primary badge-custom">datasets</span>
-                <span class="badge bg-dark badge-custom">{{ feature_models_counter }} feature models</span>
-                <br><br>
-                <span class="badge bg-primary badge-custom">{{ dataset_views }} views</span>
-                <span class="badge bg-dark badge-custom">{{ feature_models_views }} views</span>
-                <br><br>
-                <span class="badge bg-primary badge-custom">{{ dataset_downloads }} downloads</span>
-                <span class="badge bg-dark badge-custom">{{ feature_models_downloads }} downloads</span>
-                <br><br>
-                <span class="badge bg-primary badge-custom">{{ dataset_ratings_count }} Nº ratings</span>
-                <span class="badge bg-dark badge-custom">{{ feature_models_ratings_count }} Nº ratings</span>
-            </h1>
+
+    </div>
+    <!-- Statistics-->
+
+    <div class="col-xl-4 col-lg-12 col-md-12 col-sm-12">
+
+        <div class="card">
+            <div class="card-body">
+                <div class="col-12">
+
+                    <h2 class="h2 mb-3">Dataset statistics</h2>
+
+                    <h4 class="h4 mb-3" style="color: #006dad;">
+                        <i data-feather="eye" class="align-middle mr-2" style="color: #006dad;"></i>{{ dataset_views }}
+                        Views
+                    </h4>
+                    </h4>
+                    <h4 class="h4 mb-3" style="color: #006dad;">
+                        <i data-feather="download" class="align-middle mr-2" style="color: #006dad;"></i>{{
+                        dataset_downloads }} Downloads
+                    </h4>
+                    <h4 class="h4 mb-3" style="color: #006dad;">
+                        <i data-feather="star" class="align-middle mr-2" style="color: #006dad;"></i>{{
+                        dataset_ratings_count }} Number of ratings
+                    </h4>
+
+                    <div style="margin-top: 50px;"></div>
+
+                    <h2 class="h2 mb-3">Feature models statistics</h2>
+                    <h4 class="h4 mb-3" style="color: #006dad;">
+                        <i data-feather="layers" class="align-middle mr-2" style="color: #006dad;"></i>{{
+                        feature_models_counter }} Number of feature models
+                    </h4>
+                    <h4 class="h4 mb-3" style="color: #006dad;">
+                        <i data-feather="eye" class="align-middle mr-2" style="color: #006dad;"></i>{{
+                        feature_models_views
+                        }} Views
+                    </h4>
+                    <h4 class="h4 mb-3" style="color: #006dad;">
+                        <i data-feather="download" class="align-middle mr-2" style="color: #006dad;"></i>{{
+                        feature_models_downloads }} Downloads
+                    </h4>
+                    <h4 class="h4 mb-3" style="color: #006dad;">
+                        <i data-feather="star" class="align-middle mr-2" style="color: #006dad;"></i>{{
+                        feature_models_ratings_count }} Number of ratings
+                    </h4>
+                </div>
+            </div>
         </div>
+
     </div>
 </div>
 
@@ -284,36 +384,52 @@
 </div>
 
 <script>
+
     document.addEventListener('DOMContentLoaded', function () {
-        var featureModelSelect = document.getElementById('feature_model_select');
-        featureModelSelect.value = "";
+        let featureModelSelect = document.getElementById('feature_model_select');
+        if (featureModelSelect) {
+            featureModelSelect.value = "";
+        }
+
+        let stars = document.querySelectorAll('.star');
+        stars.forEach(star => {
+            star.addEventListener('click', function () {
+                setRating(this.dataset.value);
+            });
+        });
     });
 
-    function showFeatureModelRatingOptions(selectElement) {
-        var featureModelId = selectElement.value;
-        var selectedOption = selectElement.options[selectElement.selectedIndex];
-        var hasVoted = selectedOption.getAttribute('data-has-voted') === 'true';
-        var featureModelRating = selectedOption.getAttribute('data-average-rating');
-
-        document.getElementById('selected_feature_model_id').value = featureModelId;
-        document.getElementById('current_feature_model_rating').textContent = featureModelRating;
-
-        var ratingForm = document.getElementById('featureModelRatingForm');
-        var alreadyVotedMessage = document.getElementById('alreadyVotedMessage');
-
-        if (featureModelId) {
-            document.getElementById('feature_model_rating_options').style.display = 'block';
-            if (hasVoted) {
-                ratingForm.style.display = 'none';
-                alreadyVotedMessage.style.display = 'block';
+    function setRating(rating) {
+        let stars = document.querySelectorAll('.star');
+        document.getElementById('rating-input').value = rating; // Save input rate
+        stars.forEach(star => {
+            if (parseInt(star.dataset.value) <= rating) {
+                star.classList.add('selected'); // Stuffed star
+                star.textContent = '★';
             } else {
-                ratingForm.style.display = 'block';
-                alreadyVotedMessage.style.display = 'none';
+                star.classList.remove('selected'); // Empty star
+                star.textContent = '☆';
             }
-        } else {
-            document.getElementById('feature_model_rating_options').style.display = 'none';
-        }
+        });
     }
+
+    function setFeatureModelRating(starElement, featureModelId, rating) {
+        const form = starElement.closest('form');
+        form.querySelector('input[name="rating"]').value = rating; 
+
+       
+        let stars = form.querySelectorAll('.star-small');
+        stars.forEach((star, index) => {
+            if (index < rating) {
+                star.classList.add('selected'); 
+            } else {
+                star.classList.remove('selected'); 
+            }
+        });
+    }
+
+
+
     function viewFile(fileId) {
         fetch(`/file/view/${fileId}`)
             .then(response => response.json())
