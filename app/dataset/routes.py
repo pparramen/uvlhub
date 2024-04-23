@@ -274,48 +274,76 @@ def move_feature_models(dataset_id, feature_models, user=None):
         shutil.move(os.path.join(source_dir, uvl_filename), dest_dir)
 
 
+
+
 @dataset_bp.route('/dataset/file/upload', methods=['POST'])
 @login_required
 def upload():
-    file = request.files['file']
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'message': 'No file provided'}), 400
+
     user_id = current_user.id
     temp_folder = os.path.join(app.upload_folder_name(), 'temp', str(user_id))
 
-    if file and file.filename.endswith('.uvl'):
+    #create temp folder
+    if not os.path.exists(temp_folder):
+        os.makedirs(temp_folder)
 
-        # create temp folder
-        if not os.path.exists(temp_folder):
-            os.makedirs(temp_folder)
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(temp_folder, filename)
 
-        file_path = os.path.join(temp_folder, file.filename)
-
-        if os.path.exists(file_path):
-            # Generate unique filename (by recursion)
-            base_name, extension = os.path.splitext(file.filename)
-            i = 1
-            while os.path.exists(os.path.join(temp_folder, f"{base_name} ({i}){extension}")):
-                i += 1
-            new_filename = f"{base_name} ({i}){extension}"
-            file_path = os.path.join(temp_folder, new_filename)
-        else:
-            new_filename = file.filename
-
+    if filename.endswith('.zip'):
+        file.save(file_path)  # Save ZIP temp
         try:
-            file.save(file_path)
-            # valid_model = flamapy_valid_model(uvl_filename=new_filename)
-            if True:
-                return jsonify({
-                    'message': 'UVL uploaded and validated successfully',
-                    'filename': new_filename
-                }), 200
-            else:
-                return jsonify({'message': 'No valid model'}), 400
+            extracted_files = []
+            with ZipFile(file_path, 'r') as zipf:
+                valid_files = [z for z in zipf.namelist() if z.endswith('.uvl')]
+                if not valid_files:  #Check that uvl files exist inside
+                    os.remove(file_path) 
+                    return jsonify({'message': 'ZIP does not contain any .uvl files'}), 400
+                for zip_info in valid_files:
+                    zipf.extract(zip_info, temp_folder)
+                    extracted_file_path = os.path.join(temp_folder, zip_info)
+                    extracted_files.append(extracted_file_path)
+                    result = process_uvl_file(extracted_file_path, user_id) #process each uvl file
+                    if result[1] != 200: 
+                        return result
+            os.remove(file_path)  
+            return jsonify({
+                'message': 'ZIP uploaded and UVL files processed successfully',
+                'files': [{'filename': os.path.basename(f), 'path': f} for f in extracted_files]
+            }), 200
         except Exception as e:
             return jsonify({'message': str(e)}), 500
 
-    else:
-        return jsonify({'message': 'No valid file'}), 400
+    elif filename.endswith('.uvl'):
+        result = process_uvl_file(file_path, user_id)
+        if result[1] != 200:
+            return result
+        return jsonify({
+            'message': 'UVL uploaded and validated successfully',
+            'files': [{'filename': os.path.basename(file_path), 'path': file_path}]
+        }), 200
 
+    else:
+        return jsonify({'message': 'Unsupported file extension'}), 400
+
+
+def process_uvl_file(file_path, user_id):
+    try:
+        if not os.path.exists(file_path):
+            logging.error(f"File does not exist: {file_path}")
+            return jsonify({'message': 'File not found'}), 404
+        # Simulate file processing
+        logging.info(f"Processing UVL file: {file_path}")
+        return jsonify({
+            'message': 'UVL uploaded and validated successfully',
+            'filename': os.path.basename(file_path)
+        }), 200
+    except Exception as e:
+        logging.exception(f"Error processing UVL file: {file_path}")
+        return jsonify({'message': str(e)}), 500
 
 @dataset_bp.route('/dataset/file/delete', methods=['POST'])
 def delete():
