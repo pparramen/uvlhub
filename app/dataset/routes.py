@@ -286,7 +286,7 @@ def upload():
     user_id = current_user.id
     temp_folder = os.path.join(app.upload_folder_name(), 'temp', str(user_id))
 
-    #create temp folder
+    # Create temp folder if it does not exist
     if not os.path.exists(temp_folder):
         os.makedirs(temp_folder)
 
@@ -294,22 +294,22 @@ def upload():
     file_path = os.path.join(temp_folder, filename)
 
     if filename.endswith('.zip'):
-        file.save(file_path)  # Save ZIP temp
+        file.save(file_path)  # Save ZIP temporarily
         try:
             extracted_files = []
             with ZipFile(file_path, 'r') as zipf:
                 valid_files = [z for z in zipf.namelist() if z.endswith('.uvl')]
-                if not valid_files:  #Check that uvl files exist inside
-                    os.remove(file_path) 
+                if not valid_files:  # Check that UVL files exist inside
+                    os.remove(file_path)
                     return jsonify({'message': 'ZIP does not contain any .uvl files'}), 400
                 for zip_info in valid_files:
                     zipf.extract(zip_info, temp_folder)
                     extracted_file_path = os.path.join(temp_folder, zip_info)
                     extracted_files.append(extracted_file_path)
-                    result = process_uvl_file(extracted_file_path, user_id) #process each uvl file
-                    if result[1] != 200: 
+                    result = process_uvl_file(extracted_file_path, user_id)  # process each UVL file
+                    if result[1] != 200:
                         return result
-            os.remove(file_path)  
+            os.remove(file_path)
             return jsonify({
                 'message': 'ZIP uploaded and UVL files processed successfully',
                 'files': [{'filename': os.path.basename(f), 'path': f} for f in extracted_files]
@@ -318,6 +318,7 @@ def upload():
             return jsonify({'message': str(e)}), 500
 
     elif filename.endswith('.uvl'):
+        file.save(file_path)  # Save UVL file before processing
         result = process_uvl_file(file_path, user_id)
         if result[1] != 200:
             return result
@@ -329,13 +330,11 @@ def upload():
     else:
         return jsonify({'message': 'Unsupported file extension'}), 400
 
-
 def process_uvl_file(file_path, user_id):
     try:
         if not os.path.exists(file_path):
             logging.error(f"File does not exist: {file_path}")
             return jsonify({'message': 'File not found'}), 404
-        # Simulate file processing
         logging.info(f"Processing UVL file: {file_path}")
         return jsonify({
             'message': 'UVL uploaded and validated successfully',
@@ -344,6 +343,7 @@ def process_uvl_file(file_path, user_id):
     except Exception as e:
         logging.exception(f"Error processing UVL file: {file_path}")
         return jsonify({'message': str(e)}), 500
+
 
 @dataset_bp.route('/dataset/file/delete', methods=['POST'])
 def delete():
