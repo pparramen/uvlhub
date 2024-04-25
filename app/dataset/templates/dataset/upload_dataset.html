@@ -263,9 +263,20 @@
 
                                     // remove button
                                     let removeButton = document.createElement('button');
-                                    removeButton.innerHTML = 'Delete model';
-                                    removeButton.classList.add("remove-button", "btn", "btn-outline-danger", "btn-sm", "remove-button");
-                                    removeButton.style.borderRadius = '5px';
+
+                                    if (f.zip_id) {
+
+                                        removeButton.innerHTML = 'Delete all zip';
+                                        removeButton.classList.add("remove-button", "btn", "btn-outline-danger", "btn-sm", "remove-button");
+                                        removeButton.style.borderRadius = '5px';
+                                    }
+
+                                    else {
+                                        removeButton.innerHTML = 'Delete model';
+                                        removeButton.classList.add("remove-button", "btn", "btn-outline-danger", "btn-sm", "remove-button");
+                                        removeButton.style.borderRadius = '5px';
+                                    }
+
 
                                     // append space
                                     space = document.createTextNode(" ");
@@ -275,36 +286,31 @@
 
                                         if (f.zip_id) {
 
-                                            removeButton.innerHTML = 'Delete zip';
-                                             removeButton.classList.add("remove-button", "btn", "btn-outline-danger", "btn-sm", "remove-button");
-                                            removeButton.style.borderRadius = '5px';
-                            
-                                            
 
 
                                             let ListResponse = []
-                                            for(let i=0; i< response.files.length; i++){
-                                               
-                                                if(response.files[i].zip_id && response.files[i].zip_id == f.zip_id){
+                                            for (let i = 0; i < response.files.length; i++) {
+
+                                                if (response.files[i].zip_id && response.files[i].zip_id == f.zip_id) {
                                                     ListResponse.push(response.files[i].filename)
                                                 }
 
                                             }
-                                            console.log(ListResponse)
+
 
                                             let long = fileList.children.length;
                                             console.log(long)
                                             let items = Array.from(fileList.children);
                                             items.forEach(li => {
                                                 var h4Element = li.querySelector("h4").textContent;
-                                                if(ListResponse.includes(h4Element)){
+                                                if (ListResponse.includes(h4Element)) {
                                                     fileList.removeChild(li)
                                                 }
-                                            
+
                                             });
-                                            
-                                        
-                                           
+
+
+
                                             this.removeFile(file);
 
                                             // Ajax request
@@ -328,7 +334,7 @@
 
                                         else {
 
-                                            console.log('Attempting to delete model with filename: ' + f.filename);
+                                           
 
                                             fileList.removeChild(listItem);
                                             this.removeFile(file);
