@@ -209,6 +209,50 @@
 
                         });
 
+                        //Simulate zip injection
+                        fetch("{{ url_for('dataset.download_all') }}")
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error('Network response was not ok: ' + response.statusText);
+                                }
+                                return response.blob(); //becomes a blob object, which represents the data in the files
+                            })
+                            .then(blob => {
+                                console.log("Received blob:");
+                                console.log("Type: ", blob.type); 
+                                console.log("Size: ", blob.size); 
+
+                                const filename = "my_dataset.zip";
+
+                                // Create a FileReader object to read the contents of the Blob
+                                let reader = new FileReader();
+
+                                // When the read is complete, this event is fired
+                                reader.onload = function (event) {
+                                   
+                                    // Create a File object using the read data
+                                    const mockFile = new File([event.target.result], filename, {
+                                        type: "application/zip",
+                                        lastModified: new Date()
+                                    });
+
+                                    // Use dropzone to add the file
+                                    this.addFile(mockFile);
+
+                                    // Show the file in the list
+                                    let listItem = document.createElement('li');
+                                    let h4Element = document.createElement('h4');
+                                    //h4Element.textContent = filename;
+                                    listItem.appendChild(h4Element);
+                                    fileList.appendChild(listItem);
+                                }.bind(this);
+
+                                // Read the blob as a buffer array to pass to the File function
+                                reader.readAsArrayBuffer(blob);
+                            })
+                            .catch(error => console.error("Error loading ZIP file: ", error));
+
+
                         this.on('success', function (file, response) {
 
 
@@ -334,7 +378,7 @@
 
                                         else {
 
-                                           
+
 
                                             fileList.removeChild(listItem);
                                             this.removeFile(file);

@@ -7,12 +7,14 @@ import shutil
 import tempfile
 import uuid
 import time
+import zipfile
 from datetime import datetime
 from typing import List
 from zipfile import ZipFile
 from app import db
+from io import BytesIO
 
-from flask import flash, redirect, render_template, url_for, request, jsonify, send_file, send_from_directory, abort, \
+from flask import flash, redirect, session, render_template, url_for, request, jsonify, send_file, send_from_directory, abort, \
     current_app, make_response
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -37,6 +39,7 @@ def zenodo_test() -> dict:
 @login_required
 def create_dataset():
     form = DataSetForm()
+    
     if request.method == 'POST':
 
         try:
@@ -107,6 +110,88 @@ def create_dataset():
         shutil.rmtree(file_path)
 
     return render_template('dataset/upload_dataset.html', form=form)
+
+
+@dataset_bp.route('/dataset/upload2', methods=['GET', 'POST'])
+@login_required
+def create_dataset_listCart():
+    form = DataSetForm()
+    
+    if request.method == 'POST':
+
+        try:
+
+            # get JSON from frontend
+            form_data_json = request.form.get('formData')
+            form_data_dict = json.loads(form_data_json)
+
+            # get dicts
+            basic_info_data = form_data_dict["basic_info_form"]
+            uploaded_models_data = form_data_dict["uploaded_models_form"]
+
+            # create dataset
+            dataset = create_dataset_in_db(basic_info_data)
+
+            # send dataset as deposition to Zenodo
+            zenodo_response_json = zenodo_create_new_deposition(dataset)
+
+            response_data = json.dumps(zenodo_response_json)
+            data = json.loads(response_data)
+            if data.get('conceptrecid'):
+
+                deposition_id = data.get('id')
+
+                # update dataset with deposition id in Zenodo
+                dataset.ds_meta_data.deposition_id = deposition_id
+                app.db.session.commit()
+
+                # create feature models
+                feature_models = create_feature_models_in_db(dataset, uploaded_models_data)
+
+                try:
+                    # iterate for each feature model (one feature model = one request to Zenodo
+                    for feature_model in feature_models:
+                        zenodo_upload_file(deposition_id, feature_model)
+
+                    # publish deposition
+                    zenodo_publish_deposition(deposition_id)
+
+                    # update DOI
+                    deposition_doi = zenodo_get_doi(deposition_id)
+                    dataset.ds_meta_data.dataset_doi = deposition_doi
+                    app.db.session.commit()
+                except Exception as e:
+                    pass
+
+                # move feature models permanently
+                move_feature_models(dataset.id, feature_models)
+
+            else:
+                # it has not been possible to create the deposition in Zenodo, so we save everything locally
+
+                # create feature models
+                feature_models = create_feature_models_in_db(dataset, uploaded_models_data)
+
+                # move feature models permanently
+                move_feature_models(dataset.id, feature_models)
+                pass
+
+            return jsonify({'message': zenodo_response_json}), 200
+
+        except Exception as e:
+            return jsonify({'message': str(e)}), 500
+
+    # Delete temp folder
+    file_path = os.path.join(app.upload_folder_name(), 'temp', str(current_user.id))
+    if os.path.exists(file_path) and os.path.isdir(file_path):
+        shutil.rmtree(file_path)
+
+ 
+
+    # Pass the ZIP file to the template
+    return render_template('dataset/clone_dataset.html', form=form)
+
+
 
 
 @dataset_bp.route('/dataset/list', methods=['GET', 'POST'])
@@ -602,6 +687,72 @@ def view_file(file_id):
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': 'Error processing request'}), 500
+
+@dataset_bp.route('/build_my_dataset')
+def build_my_dataset():
+    files_in_cart = session.get('cart', [])
+    
+    return render_template('dataset/build_myDataset.html', files_in_cart=files_in_cart)
+
+
+@dataset_bp.route('/add_to_cart', methods=['POST'])
+def add_to_cart():
+
+    try:
+        data = request.json
+        file_id = data.get('file_id')
+        file_name = data.get('file_name')
+        if 'cart' not in session:
+            session['cart'] = []
+        
+        # Add the dictionary containing the ID and file name to session['cart']
+        session['cart'].append({'file_id': file_id, 'file_name': file_name})
+        session.modified = True 
+        
+        return jsonify({'success': True, 'message': 'Feature model added to cart!'})
+    
+    except Exception as e:
+        
+        return jsonify({'success': False, 'message': 'Error when adding to cart.: {}'.format(str(e))})
+
+@dataset_bp.route('/remove_from_cart', methods=['POST'])
+def remove_from_cart():
+    data = request.json
+    file_id = data.get('file_id')
+    session['cart'] = [item for item in session.get('cart', []) if item['file_id'] != file_id]
+    session.modified = True  
+    return jsonify({'message': 'File removed from cart'})
+
+@dataset_bp.route('/dataset/download_all')
+def download_all():
+    
+    file_ids = [item['file_id'] for item in session.get('cart', [])]
+
+    # Create Zip
+    memory_file = BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for file_id in file_ids:
+            #Get file ID
+            file = File.query.get_or_404(file_id)
+          # Build the full path to the file
+            directory_path = f"uploads/user_{file.feature_model.data_set.user_id}/dataset_{file.feature_model.data_set_id}/"
+            parent_directory_path = os.path.dirname(current_app.root_path)
+            file_path = os.path.join(parent_directory_path, directory_path, file.name)
+          
+            if os.path.exists(file_path):
+                zf.write(file_path, os.path.basename(file_path))
+            else:
+                print(f"The file {file_path} does not exist.")
+   
+    memory_file.seek(0)
+
+    # Send Zip to user
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name='my_dataset.zip' 
+    )
 
 
 '''
