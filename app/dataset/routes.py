@@ -38,6 +38,8 @@ def zenodo_test() -> dict:
 @dataset_bp.route('/dataset/upload', methods=['GET', 'POST'])
 @login_required
 def create_dataset():
+
+    button_access = request.args.get('button_access', type=bool, default=False)
     form = DataSetForm()
     
     if request.method == 'POST':
@@ -109,7 +111,7 @@ def create_dataset():
     if os.path.exists(file_path) and os.path.isdir(file_path):
         shutil.rmtree(file_path)
 
-    return render_template('dataset/upload_dataset.html', form=form)
+    return render_template('dataset/upload_dataset.html', form=form, button_access=button_access)
 
 
 @dataset_bp.route('/dataset/upload2', methods=['GET', 'POST'])

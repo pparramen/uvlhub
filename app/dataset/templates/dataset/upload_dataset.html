@@ -209,6 +209,8 @@
 
                         });
 
+                        {% if button_access %}
+
                         //Simulate zip injection
                         fetch("{{ url_for('dataset.download_all') }}")
                             .then(response => {
@@ -219,8 +221,8 @@
                             })
                             .then(blob => {
                                 console.log("Received blob:");
-                                console.log("Type: ", blob.type); 
-                                console.log("Size: ", blob.size); 
+                                console.log("Type: ", blob.type);
+                                console.log("Size: ", blob.size);
 
                                 const filename = "my_dataset.zip";
 
@@ -229,7 +231,7 @@
 
                                 // When the read is complete, this event is fired
                                 reader.onload = function (event) {
-                                   
+
                                     // Create a File object using the read data
                                     const mockFile = new File([event.target.result], filename, {
                                         type: "application/zip",
@@ -251,6 +253,8 @@
                                 reader.readAsArrayBuffer(blob);
                             })
                             .catch(error => console.error("Error loading ZIP file: ", error));
+
+                        {% endif %}
 
 
                         this.on('success', function (file, response) {
