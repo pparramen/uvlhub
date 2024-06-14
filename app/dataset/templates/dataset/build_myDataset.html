@@ -1,0 +1,64 @@
+{% extends "base_template.html" %}
+
+{% block title %}Build My Dataset{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4 text-center">My dataset</h2>
+
+    <div class="d-flex flex-column align-items-center">
+        <div class="list-group mb-4" style="width: 100%; max-width: 600px;">
+            {% for item in files_in_cart %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                {{ item['file_name'] }}
+                <button class="btn" onclick="removeFromCart('{{ item['file_id'] }}')">
+                    <i data-feather="trash-2"></i>
+                </button>
+            </div>
+            {% else %}
+            <div class="list-group-item">
+                There are no files added to the dataset.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if files_in_cart %}
+    <div class="d-flex justify-content-center mt-4">
+        <a href="{{ url_for('dataset.download_all') }}" class="btn btn-primary" style="border-radius: 5px;">
+            <i data-feather="download"></i> Download All
+        </a>
+    </div>
+
+    {% if current_user.is_authenticated %}
+    <div class="d-flex justify-content-center mt-4">
+        <a href="{{ url_for('dataset.create_dataset', button_access=True) }}" class="btn btn-primary" style="border-radius: 5px;">
+            <i data-feather="upload"></i> Upload Dataset
+        </a>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        feather.replace(); 
+    });
+
+    function removeFromCart(fileId) {
+        fetch(`/remove_from_cart`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ file_id: fileId })
+        })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data.message);
+                window.location.reload();
+            })
+            .catch(error => console.error('Error:', error));
+    }
+</script>
+{% endblock %}

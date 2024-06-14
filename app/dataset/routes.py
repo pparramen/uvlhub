@@ -7,12 +7,14 @@ import shutil
 import tempfile
 import uuid
 import time
+import zipfile
 from datetime import datetime
 from typing import List
 from zipfile import ZipFile
 from app import db
+from io import BytesIO
 
-from flask import flash, redirect, render_template, url_for, request, jsonify, send_file, send_from_directory, abort, \
+from flask import flash, redirect, session, render_template, url_for, request, jsonify, send_file, send_from_directory, abort, \
     current_app, make_response
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -36,7 +38,10 @@ def zenodo_test() -> dict:
 @dataset_bp.route('/dataset/upload', methods=['GET', 'POST'])
 @login_required
 def create_dataset():
+
+    button_access = request.args.get('button_access', type=bool, default=False)
     form = DataSetForm()
+    
     if request.method == 'POST':
 
         try:
@@ -106,7 +111,8 @@ def create_dataset():
     if os.path.exists(file_path) and os.path.isdir(file_path):
         shutil.rmtree(file_path)
 
-    return render_template('dataset/upload_dataset.html', form=form)
+    return render_template('dataset/upload_dataset.html', form=form, button_access=button_access)
+
 
 
 @dataset_bp.route('/dataset/list', methods=['GET', 'POST'])
@@ -274,47 +280,80 @@ def move_feature_models(dataset_id, feature_models, user=None):
         shutil.move(os.path.join(source_dir, uvl_filename), dest_dir)
 
 
+
+
 @dataset_bp.route('/dataset/file/upload', methods=['POST'])
 @login_required
 def upload():
-    file = request.files['file']
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'message': 'No file provided'}), 400
+
     user_id = current_user.id
     temp_folder = os.path.join(app.upload_folder_name(), 'temp', str(user_id))
 
-    if file and file.filename.endswith('.uvl'):
+    # Create temp folder if it does not exist
+    if not os.path.exists(temp_folder):
+        os.makedirs(temp_folder)
 
-        # create temp folder
-        if not os.path.exists(temp_folder):
-            os.makedirs(temp_folder)
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(temp_folder, filename)
 
-        file_path = os.path.join(temp_folder, file.filename)
-
-        if os.path.exists(file_path):
-            # Generate unique filename (by recursion)
-            base_name, extension = os.path.splitext(file.filename)
-            i = 1
-            while os.path.exists(os.path.join(temp_folder, f"{base_name} ({i}){extension}")):
-                i += 1
-            new_filename = f"{base_name} ({i}){extension}"
-            file_path = os.path.join(temp_folder, new_filename)
-        else:
-            new_filename = file.filename
-
+    if filename.endswith('.zip'):
+        zip_id = str(uuid.uuid4())  # Generate a unique ID for the zip file
+        file.save(file_path)  # Save ZIP temporarily
         try:
-            file.save(file_path)
-            # valid_model = flamapy_valid_model(uvl_filename=new_filename)
-            if True:
-                return jsonify({
-                    'message': 'UVL uploaded and validated successfully',
-                    'filename': new_filename
-                }), 200
-            else:
-                return jsonify({'message': 'No valid model'}), 400
+            extracted_files = []
+            with ZipFile(file_path, 'r') as zipf:
+                valid_files = [z for z in zipf.namelist() if z.endswith('.uvl')]
+                if not valid_files:  # Check that UVL files exist inside
+                    os.remove(file_path)
+                    return jsonify({'message': 'ZIP does not contain any .uvl files'}), 400
+                for zip_info in valid_files:
+                    zipf.extract(zip_info, temp_folder)
+                    extracted_file_path = os.path.join(temp_folder, zip_info)
+                    # Call to process each UVL file and check for processing result
+                    result = process_uvl_file(extracted_file_path, user_id)
+                    if result[1] != 200:
+                        return result
+                    # Append with zip_id included in the response
+                    extracted_files.append({'filename': os.path.basename(extracted_file_path), 'path': extracted_file_path, 'zip_id': zip_id})
+            os.remove(file_path)
+            return jsonify({
+                'message': 'ZIP uploaded and UVL files processed successfully',
+                'files': extracted_files  # Include zip_id here to track which zip the file came from
+            }), 200
         except Exception as e:
             return jsonify({'message': str(e)}), 500
 
+    elif filename.endswith('.uvl'):
+        file.save(file_path)  # Save UVL file before processing
+        result = process_uvl_file(file_path, user_id)
+        if result[1] != 200:
+            return result
+        return jsonify({
+            'message': 'UVL uploaded and validated successfully',
+            'files': [{'filename': os.path.basename(file_path), 'path': file_path}]
+        }), 200
+
     else:
-        return jsonify({'message': 'No valid file'}), 400
+        return jsonify({'message': 'Unsupported file extension'}), 400
+
+def process_uvl_file(file_path, user_id):
+    try:
+        if not os.path.exists(file_path):
+            logging.error(f"File does not exist: {file_path}")
+            return jsonify({'message': 'File not found'}), 404
+        # Simulate file processing
+        logging.info(f"Processing UVL file: {file_path}")
+        return jsonify({
+            'message': 'UVL uploaded and validated successfully',
+            'filename': os.path.basename(file_path)
+        }), 200
+    except Exception as e:
+        logging.exception(f"Error processing UVL file: {file_path}")
+        return jsonify({'message': str(e)}), 500
+
 
 
 @dataset_bp.route('/dataset/file/delete', methods=['POST'])
@@ -473,6 +512,13 @@ def download_file(file_id):
 @dataset_bp.route('/rate_item', methods=['POST'])
 @login_required
 def rate_item():
+
+    try:
+        rating_value = int(request.form.get('rating', 0))  
+    except ValueError:
+        flash('Please select a valid rating.', 'error')
+        return redirect(request.referrer)  
+
     rating_value = request.form.get('rating')
     feature_model_id = request.form.get('feature_model_id')
     dataset_id = request.form.get('dataset_id')
@@ -562,6 +608,72 @@ def view_file(file_id):
             return jsonify({'success': False, 'error': 'File not found'}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': 'Error processing request'}), 500
+
+@dataset_bp.route('/build_my_dataset')
+def build_my_dataset():
+    files_in_cart = session.get('cart', [])
+    
+    return render_template('dataset/build_myDataset.html', files_in_cart=files_in_cart)
+
+
+@dataset_bp.route('/add_to_cart', methods=['POST'])
+def add_to_cart():
+
+    try:
+        data = request.json
+        file_id = data.get('file_id')
+        file_name = data.get('file_name')
+        if 'cart' not in session:
+            session['cart'] = []
+        
+        # Add the dictionary containing the ID and file name to session['cart']
+        session['cart'].append({'file_id': file_id, 'file_name': file_name})
+        session.modified = True 
+        
+        return jsonify({'success': True, 'message': 'Feature model added to cart!'})
+    
+    except Exception as e:
+        
+        return jsonify({'success': False, 'message': 'Error when adding to cart.: {}'.format(str(e))})
+
+@dataset_bp.route('/remove_from_cart', methods=['POST'])
+def remove_from_cart():
+    data = request.json
+    file_id = data.get('file_id')
+    session['cart'] = [item for item in session.get('cart', []) if item['file_id'] != file_id]
+    session.modified = True  
+    return jsonify({'message': 'File removed from cart'})
+
+@dataset_bp.route('/dataset/download_all')
+def download_all():
+    
+    file_ids = [item['file_id'] for item in session.get('cart', [])]
+
+    # Create Zip
+    memory_file = BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for file_id in file_ids:
+            #Get file ID
+            file = File.query.get_or_404(file_id)
+          # Build the full path to the file
+            directory_path = f"uploads/user_{file.feature_model.data_set.user_id}/dataset_{file.feature_model.data_set_id}/"
+            parent_directory_path = os.path.dirname(current_app.root_path)
+            file_path = os.path.join(parent_directory_path, directory_path, file.name)
+          
+            if os.path.exists(file_path):
+                zf.write(file_path, os.path.basename(file_path))
+            else:
+                print(f"The file {file_path} does not exist.")
+   
+    memory_file.seek(0)
+
+    # Send Zip to user
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name='my_dataset.zip' 
+    )
 
 
 '''
